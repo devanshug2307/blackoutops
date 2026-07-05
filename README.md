@@ -92,7 +92,7 @@ This project was built with **Claude Code (Claude Fable 5)** as a pair programme
 
 ## Team
 
-Solo build by **Devanshu** ([litelae@gmail.com](mailto:litelae@gmail.com)).
+Built by **Devanshu** ([litelae@gmail.com](mailto:litelae@gmail.com)) and **Divy Goyal**.
 
 ## License
 
