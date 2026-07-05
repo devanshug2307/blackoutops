@@ -5,3 +5,4 @@ __pycache__/
 .cognee*/
 server.log
 docs/graph-*.html
+.gstack/

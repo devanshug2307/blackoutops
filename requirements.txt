@@ -2,4 +2,4 @@ cognee>=1.2.2
 python-dotenv
 fastapi
 uvicorn[standard]
-httpx
+

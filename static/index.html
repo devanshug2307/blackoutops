@@ -217,11 +217,11 @@ Seed the night, then ask me anything. I never drink and I never forget.</div>
       </div>
     </div>
     <div class="chips" id="chips">
-      <span class="chip">What happened last night?</span>
-      <span class="chip">What was the root cause?</span>
-      <span class="chip">Have we seen this failure before?</span>
-      <span class="chip">What exactly did I run at 3AM?</span>
-      <span class="chip">How do we make sure this never happens again?</span>
+      <span class="chip">Reconstruct last night's incident (July 5) as a timeline</span>
+      <span class="chip">What was the root cause of the July 5 outage?</span>
+      <span class="chip">Have we seen this failure before? Compare incidents.</span>
+      <span class="chip">What exactly did I run in the shell at 3AM on July 5?</span>
+      <span class="chip">How do we prevent this from happening again?</span>
     </div>
     <div class="inputrow">
       <input id="q" placeholder="Ask the incident brain… (recall runs on Cognee Cloud)" autocomplete="off">
@@ -268,7 +268,7 @@ Seed the night, then ask me anything. I never drink and I never forget.</div>
         <p>Retention policy: surgically delete an incident. Then ask about it again — and watch the brain honestly not know.</p>
         <div class="row">
           <select id="forget-ds">
-            <option value="incident_2026_06_14">incident_2026_06_14 (history)</option>
+            <option value="incident_2026_06_14_redis_storm">incident_2026_06_14_redis_storm (history)</option>
             <option value="incident_2026_07_05">incident_2026_07_05 (last night)</option>
           </select>
           <button class="ghost danger" id="forget">Purge</button>
@@ -283,7 +283,7 @@ Seed the night, then ask me anything. I never drink and I never forget.</div>
         <div class="row">
           <select id="graph-ds">
             <option value="incident_2026_07_05">incident_2026_07_05</option>
-            <option value="incident_2026_06_14">incident_2026_06_14</option>
+            <option value="incident_2026_06_14_redis_storm">incident_2026_06_14_redis_storm</option>
           </select>
           <button class="ghost" id="graph">Open graph</button>
         </div>
@@ -349,6 +349,7 @@ async function poll(){
   }
 }
 setInterval(poll, 2500); poll();
+loadFeed(); // the raw artifacts are the demo's constants — show the night immediately
 
 /* ---------- feed ---------- */
 function artifactClass(text){

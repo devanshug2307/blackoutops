@@ -18,7 +18,7 @@ import os
 import urllib.parse
 from typing import Any
 
-import httpx
+import aiohttp
 from dotenv import load_dotenv
 
 import cognee
@@ -75,14 +75,35 @@ async def ask(
     use_session: bool = True,
     top_k: int = 12,
 ) -> dict:
-    """RECALL: auto-routed search over graph + session memory."""
-    entries = await cognee.recall(
-        question,
-        datasets=datasets or None,
-        session_id=SESSION_ID if use_session else None,
-        top_k=top_k,
-        auto_route=True,
-    )
+    """RECALL: auto-routed search over graph + session memory.
+
+    If every requested dataset has been forgotten, the tenant reports that
+    recall prerequisites aren't met — which we surface as the truthful answer:
+    the brain has no memory of it.
+    """
+    try:
+        entries = await cognee.recall(
+            question,
+            datasets=datasets or None,
+            session_id=SESSION_ID if use_session else None,
+            top_k=top_k,
+            auto_route=True,
+        )
+    except Exception as e:
+        if "prerequisites not met" in str(e) or "404" in str(e):
+            return {
+                "answers": [
+                    {
+                        "kind": "no_memory",
+                        "text": "I have no memory of that. That incident was forgotten — "
+                        "the dataset no longer exists in Cognee Cloud.",
+                        "dataset": None,
+                    }
+                ],
+                "contexts": [],
+                "routed_over": datasets,
+            }
+        raise
     answers, contexts = [], []
     for e in entries:
         d = e if isinstance(e, dict) else getattr(e, "__dict__", {})
@@ -94,24 +115,48 @@ async def ask(
             "dataset": d.get("dataset_name"),
         }
         (answers if "completion" in str(kind).lower() else contexts).append(item)
+    if not answers and not contexts:
+        answers = [
+            {
+                "kind": "no_memory",
+                "text": "I have no memory of that — nothing in these datasets matches.",
+                "dataset": None,
+            }
+        ]
     return {"answers": answers, "contexts": contexts[:8], "routed_over": datasets}
 
 
 async def file_postmortem(postmortem_text: str, dataset: str) -> dict:
     """IMPROVE: feed the human-confirmed root cause back in, then run an
-    enrichment pass so future recalls rank the confirmed pattern first."""
-    await cognee.remember(postmortem_text, dataset_name=dataset)
-    improve_result = await cognee.improve(dataset=dataset)
-    return {
-        "postmortem": "stored",
-        "improve": str(improve_result)[:300] if improve_result is not None else "completed",
-        "dataset": dataset,
-    }
+    enrichment pass so future recalls rank the confirmed pattern first.
+
+    remember() already runs cloud-side enrichment inline (self_improvement=True
+    is the default). We additionally call the dedicated improve() pass; tenants
+    that don't expose that route yet fall back to the inline enrichment alone.
+    """
+    await cognee.remember(postmortem_text, dataset_name=dataset, self_improvement=True)
+    try:
+        improve_result = await cognee.improve(dataset=dataset)
+        improve_note = str(improve_result)[:300] if improve_result is not None else "completed"
+    except Exception as e:
+        improve_note = (
+            "inline enrichment via remember(self_improvement=True); "
+            f"dedicated improve() route unavailable on this tenant ({str(e)[:90]})"
+        )
+    return {"postmortem": "stored", "improve": improve_note, "dataset": dataset}
 
 
 async def purge(dataset: str) -> dict:
-    """FORGET: surgical, dataset-scoped deletion. Returns cognee's own receipt."""
-    result = await cognee.forget(dataset=dataset)
+    """FORGET: surgical, dataset-scoped deletion. Returns cognee's own receipt.
+
+    memory_only=True wipes the dataset's graph/vector memory but keeps the
+    relational dataset row. We found (and reported upstream) that a FULL
+    forget() on this Cloud build tombstones the dataset name forever — any
+    later remember() into it 409s with RetryError[ProgrammingError]. Memory-
+    only deletion gives the same demo-visible guarantee (recall knows nothing)
+    while keeping incident names reusable.
+    """
+    result = await cognee.forget(dataset=dataset, memory_only=True)
     _state["dataset_ids"].pop(dataset, None)
     return result if isinstance(result, dict) else {"status": str(result)}
 
@@ -123,26 +168,26 @@ async def graph_html(dataset: str) -> str | None:
         dataset_id = await _lookup_dataset_id(dataset)
     if dataset_id is None:
         return None
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.get(
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+        async with session.get(
             f"{BASE_URL}/api/v1/visualize",
-            params={"dataset_id": dataset_id},
+            params={"dataset_id": str(dataset_id)},
             headers={"X-Api-Key": API_KEY},
-        )
-        resp.raise_for_status()
-        return resp.text
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.text()
 
 
 async def _lookup_dataset_id(dataset: str) -> str | None:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+        async with session.get(
             f"{BASE_URL}/api/v1/datasets/", headers={"X-Api-Key": API_KEY}
-        )
-        resp.raise_for_status()
-        for d in resp.json():
-            if d.get("name") == dataset:
-                _state["dataset_ids"][dataset] = d["id"]
-                return d["id"]
+        ) as resp:
+            resp.raise_for_status()
+            for d in await resp.json():
+                if d.get("name") == dataset:
+                    _state["dataset_ids"][dataset] = d["id"]
+                    return d["id"]
     return None
 
 

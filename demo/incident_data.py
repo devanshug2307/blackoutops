@@ -13,7 +13,10 @@ across fragments — which is exactly what a plain vector store can't do.
 """
 
 LAST_NIGHT_DATASET = "incident_2026_07_05"
-HISTORICAL_DATASET = "incident_2026_06_14"
+# NOTE: not plain "incident_2026_06_14" — we hit a Cognee Cloud bug during the
+# hackathon where a fully forget()-ed dataset name can never be remembered into
+# again (409 RetryError[ProgrammingError]); see README "Bugs we found upstream".
+HISTORICAL_DATASET = "incident_2026_06_14_redis_storm"
 
 LAST_NIGHT = [
     # --- monitoring alerts ---
