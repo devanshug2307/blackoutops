@@ -25,22 +25,19 @@ from demo.incident_data import (
     MORNING_POSTMORTEM,
 )
 
-app = FastAPI(title="BlackoutOps")
-
 seed_progress: dict = {"state": "idle", "done": 0, "total": 0, "error": None}
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
-    yield
-
-
-@app.on_event("startup")
-async def startup():
     try:
         await memory.connect()
     except Exception:
         traceback.print_exc()
+    yield
+
+
+app = FastAPI(title="BlackoutOps", lifespan=lifespan)
 
 
 @app.get("/api/status")
@@ -92,12 +89,28 @@ async def api_ask(req: AskRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(502, f"recall failed: {e}")
-    # Session memory: log the investigation step so follow-up questions have context.
+    # Session memory: store the exchange as a typed QAEntry so follow-up
+    # questions have context and the answer can receive feedback.
+    qa_id = None
     if req.use_session and result["answers"]:
-        note = f"Investigation note — Q: {req.question} A: {result['answers'][0]['text'][:500]}"
         with contextlib.suppress(Exception):
-            await memory.log_to_session(note)
-    return result
+            qa_id = await memory.store_qa(req.question, result["answers"][0]["text"][:800])
+    return {**result, "qa_id": qa_id}
+
+
+class FeedbackRequest(BaseModel):
+    qa_id: str
+    score: int  # 1 = not helpful, 5 = helpful
+    text: str = ""
+
+
+@app.post("/api/feedback")
+async def api_feedback(req: FeedbackRequest):
+    try:
+        return await memory.add_feedback(req.qa_id, req.score, req.text)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(502, f"feedback failed: {e}")
 
 
 @app.post("/api/postmortem")

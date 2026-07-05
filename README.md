@@ -26,9 +26,10 @@ Every on-call engineer knows the hangover: alerts at 02:47, pages at 03:15, a bl
 | Lifecycle | Where | What it does here |
 |---|---|---|
 | **`remember()`** | [`memory.py → ingest_artifacts()`](memory.py) | Each raw ops artifact becomes permanent graph memory in a per-incident dataset (`incident_2026_07_05`, `incident_2026_06_14`) |
-| **`remember(session_id=…)`** | [`memory.py → log_to_session()`](memory.py) | Every debrief Q&A is logged to session memory (`morning-after-debrief`) — refresh the page: the *UI* forgets, Cognee doesn't |
+| **`remember(QAEntry, session_id=…)`** | [`memory.py → store_qa()`](memory.py) | Every debrief Q&A is stored as a **typed QAEntry** in session memory (`morning-after-debrief`) — refresh the page: the *UI* forgets, Cognee doesn't |
+| **`remember(FeedbackEntry, …)`** | [`memory.py → add_feedback()`](memory.py) | 👍/👎 on any answer stores a typed FeedbackEntry attached to that QA memory — human signal living next to the answer it judges |
 | **`recall()`** | [`memory.py → ask()`](memory.py) | Auto-routed recall over **both** incident datasets + session memory (`auto_route=True`), returning graph-completion answers with provenance |
-| **`improve()`** | [`memory.py → file_postmortem()`](memory.py) | The human-confirmed postmortem is remembered, then an enrichment pass runs so the recurring pattern ranks first in future recalls |
+| **`improve()`** | [`memory.py → file_postmortem()`](memory.py) | The confirmed postmortem goes through the full cloud remember pipeline, then the dedicated `improve()` pass is attempted — with the honest receipt shown in the UI on tenants that don't expose that route yet |
 | **`forget()`** | [`memory.py → purge()`](memory.py) | Dataset-scoped deletion (`memory_only=True`) with Cognee's own receipt shown in the UI — see "Bugs we found upstream" for why memory-only |
 | **Graph visualization** | [`memory.py → graph_html()`](memory.py) | The tenant's `/api/v1/visualize` rendered in-app, so you can *see* what the brain built out of the night |
 
@@ -56,10 +57,7 @@ Every on-call engineer knows the hangover: alerts at 02:47, pages at 03:15, a bl
 git clone https://github.com/devanshug2307/blackoutops && cd blackoutops
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-cat > .env << 'EOF'
-COGNEE_BASE_URL="https://tenant-<your-id>.aws.cognee.ai"
-COGNEE_API_KEY="<your-key>"
-EOF
+cp .env.example .env   # then fill in your tenant URL + API key
 
 .venv/bin/uvicorn app:app --port 8787 --loop asyncio
 # open http://127.0.0.1:8787
@@ -83,7 +81,7 @@ Get a tenant + key at [platform.cognee.ai](https://platform.cognee.ai) (hackatho
 
 Building on a live cloud during a hackathon is the best fuzzer there is:
 
-1. **`remember()` into a fully-`forget()`-ed dataset name fails forever** — after `forget(dataset=X)` (full deletion), any later `remember(..., dataset_name=X)` returns `409 RetryError[ProgrammingError]`. Minimal repro in [`scripts/repro_forget_409.py`](scripts/repro_forget_409.py). Our workaround: `forget(memory_only=True)`, which wipes graph/vector memory (recall honestly knows nothing) while keeping the dataset name reusable.
+1. **`remember()` into a fully-`forget()`-ed dataset name fails forever** — after `forget(dataset=X)` (full deletion), any later `remember(..., dataset_name=X)` returns `409 RetryError[ProgrammingError]`. Filed as [topoteretes/cognee#3895](https://github.com/topoteretes/cognee/issues/3895) with a minimal repro ([`scripts/repro_forget_409.py`](scripts/repro_forget_409.py)). Our workaround: `forget(memory_only=True)`, which wipes graph/vector memory (recall honestly knows nothing) while keeping the dataset name reusable.
 2. **Fresh tenant subdomains can be invisible behind negative DNS caches** — resolvers that were asked about the tenant host *before* provisioning (1.1.1.1 in our case) serve cached NXDOMAIN afterwards. Worked around in [`dns_fallback.py`](dns_fallback.py) via DNS-over-HTTPS + `socket.getaddrinfo` pinning (run uvicorn with `--loop asyncio`; uvloop resolves DNS in C and bypasses the patch).
 
 ## AI assistance disclosure

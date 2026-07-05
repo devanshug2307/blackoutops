@@ -92,6 +92,8 @@
   .badge.ds{color:var(--blue)}
   .badge.sess{color:var(--green)}
   .typing{color:var(--faint); font-size:12.5px; padding:4px 2px}
+  .msg.brain code{background:var(--chip); border:1px solid var(--line); border-radius:4px; padding:0 4px; font-family:ui-monospace, Menlo, monospace; font-size:12px}
+  button.fb{padding:3px 9px; font-size:11px}
   .chips{display:flex; flex-wrap:wrap; gap:7px; padding:10px 12px 4px}
   .chip{
     font-size:12px; color:var(--dim); background:var(--chip);
@@ -257,14 +259,14 @@ Seed the night, then ask me anything. I never drink and I never forget.</div>
       <div class="card">
         <h4><span class="n">3 ·</span> IMPROVE</h4>
         <span class="apichip mono">cognee.improve(dataset=…) <span style="color:var(--faint)">// + postmortem remember</span></span>
-        <p>File the confirmed postmortem back into memory and run an enrichment pass — the brain learns the pattern, so the NEXT 3AM page gets answered in seconds.</p>
+        <p>File the confirmed postmortem back into memory and run an enrichment pass — the brain learns the pattern, so the NEXT 3AM page gets answered in seconds. Every 👍/👎 on an answer is a typed <span class="mono">FeedbackEntry</span> stored on that QA memory.</p>
         <div class="row"><button class="ghost" id="postmortem">File postmortem &amp; learn</button></div>
         <div class="note" id="pm-note"></div>
       </div>
 
       <div class="card">
         <h4><span class="n">4 ·</span> FORGET</h4>
-        <span class="apichip mono">cognee.forget(dataset=…)</span>
+        <span class="apichip mono">cognee.forget(dataset=…, memory_only=True)</span>
         <p>Retention policy: surgically delete an incident. Then ask about it again — and watch the brain honestly not know.</p>
         <div class="row">
           <select id="forget-ds">
@@ -400,14 +402,41 @@ const THINKING = [
   'auto-routing recall…','traversing knowledge graph…','checking session memory…',
   'connecting alerts → deploys → commands…','asking the graph who broke redis…'
 ];
+function mdLite(text){
+  // escape first, then whitelist a few inline markdown forms
+  const esc = document.createElement('div');
+  esc.textContent = text;
+  return esc.innerHTML
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
 function addMsg(cls, body){
   const el = document.createElement('div');
   el.className = 'msg ' + cls;
-  const b = document.createElement('div'); b.className='body'; b.textContent = body;
+  const b = document.createElement('div'); b.className='body';
+  if(cls === 'brain'){ b.innerHTML = mdLite(body); } else { b.textContent = body; }
   el.appendChild(b);
   $('chat').appendChild(el);
   $('chat').scrollTop = $('chat').scrollHeight;
   return el;
+}
+function addFeedbackButtons(el, qaId){
+  const bar = document.createElement('div'); bar.className = 'meta';
+  const mk = (label, score) => {
+    const btn = document.createElement('button');
+    btn.className = 'ghost fb'; btn.textContent = label;
+    btn.onclick = async () => {
+      bar.querySelectorAll('button').forEach(x => x.disabled = true);
+      try{
+        await api('/api/feedback', {method:'POST', body:JSON.stringify({qa_id: qaId, score})});
+        bar.innerHTML = '<span class="badge sess">feedback → FeedbackEntry in Cognee session memory ✓</span>';
+      }catch(e){ toast('feedback: '+e.message, 'err'); }
+    };
+    return btn;
+  };
+  bar.appendChild(mk('👍 helpful', 5));
+  bar.appendChild(mk('👎 off', 1));
+  el.appendChild(bar);
 }
 async function ask(q){
   if(!q.trim()) return;
@@ -427,8 +456,9 @@ async function ask(q){
       meta.innerHTML += `<span class="badge kind">${a.kind}</span>`;
       if(a.dataset) meta.innerHTML += `<span class="badge ds">${a.dataset}</span>`;
     });
-    if(useSession) meta.innerHTML += `<span class="badge sess">session logged</span>`;
+    if(useSession && res.qa_id) meta.innerHTML += `<span class="badge sess">QAEntry → session memory</span>`;
     el.appendChild(meta);
+    if(useSession && res.qa_id) addFeedbackButtons(el, res.qa_id);
     $('recall-note').textContent = `last recall routed over: ${res.routed_over.join(', ')}${useSession?' + session':''}`;
   }catch(e){
     clearInterval(spin); t.remove();
@@ -446,10 +476,10 @@ $('postmortem').onclick = async ()=>{
   $('pm-note').textContent = 'remembering postmortem + running improve() on cloud…';
   $('pm-note').className='note';
   try{
-    await api('/api/postmortem', {method:'POST'});
-    $('pm-note').textContent = '✓ pattern learned. Ask: "have we seen this before?" — recall now ranks the confirmed root-cause pattern first.';
+    const r = await api('/api/postmortem', {method:'POST'});
+    $('pm-note').textContent = `✓ postmortem ${r.postmortem} · improve: ${r.improve}`;
     $('pm-note').className = 'note ok';
-    toast('improve() complete — memory adapted', 'ok');
+    toast('postmortem in memory — receipt shown below', 'ok');
     loadFeed(); // postmortem now part of the record
   }catch(e){
     $('pm-note').textContent = '✗ ' + e.message; $('pm-note').className='note err';
@@ -465,7 +495,7 @@ $('forget').onclick = async ()=>{
   $('forget-note').textContent = 'purging…'; $('forget-note').className='note';
   try{
     const r = await api('/api/forget', {method:'POST', body:JSON.stringify({dataset:ds})});
-    $('forget-note').textContent = `✓ ${ds} deleted (status: ${r.status || 'success'}). Now ask about it — the brain honestly won't know.`;
+    $('forget-note').textContent = `✓ receipt ${JSON.stringify(r)} — now ask about it; the brain honestly won't know.`;
     $('forget-note').className = 'note ok';
     toast(`forget() receipt: ${ds} → ${r.status || 'success'}`, 'ok');
   }catch(e){

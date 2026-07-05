@@ -64,9 +64,25 @@ async def ingest_artifacts(artifacts: list[str], dataset: str) -> list[dict]:
     return results
 
 
-async def log_to_session(note: str) -> None:
-    """REMEMBER (session): fast session-memory write for the ongoing investigation."""
-    await cognee.remember(note, session_id=SESSION_ID)
+async def store_qa(question: str, answer: str) -> str | None:
+    """REMEMBER (session, typed): each debrief exchange is stored as a typed
+    QAEntry in session memory, so it can carry structured feedback later."""
+    result = await cognee.remember(
+        cognee.QAEntry(question=question, answer=answer), session_id=SESSION_ID
+    )
+    return getattr(result, "entry_id", None) or (
+        result.get("entry_id") if isinstance(result, dict) else None
+    )
+
+
+async def add_feedback(qa_id: str, score: int, text: str = "") -> dict:
+    """FEEDBACK: a typed FeedbackEntry attached to the QA memory it judges —
+    human signal stored alongside the answer in Cognee session memory."""
+    result = await cognee.remember(
+        cognee.FeedbackEntry(qa_id=qa_id, feedback_score=score, feedback_text=text or None),
+        session_id=SESSION_ID,
+    )
+    return {"status": getattr(result, "status", str(result))}
 
 
 async def ask(
@@ -127,21 +143,22 @@ async def ask(
 
 
 async def file_postmortem(postmortem_text: str, dataset: str) -> dict:
-    """IMPROVE: feed the human-confirmed root cause back in, then run an
-    enrichment pass so future recalls rank the confirmed pattern first.
+    """IMPROVE: feed the human-confirmed root cause back into graph memory,
+    then attempt the dedicated improve() enrichment pass.
 
-    remember() already runs cloud-side enrichment inline (self_improvement=True
-    is the default). We additionally call the dedicated improve() pass; tenants
-    that don't expose that route yet fall back to the inline enrichment alone.
+    The postmortem goes through the full cloud remember pipeline (add +
+    cognify), which links the confirmed pattern into the incident graph. On
+    tenants that don't expose the dedicated improve() route yet, that pipeline
+    is the enrichment we get — reported honestly in the receipt.
     """
-    await cognee.remember(postmortem_text, dataset_name=dataset, self_improvement=True)
+    await cognee.remember(postmortem_text, dataset_name=dataset)
     try:
         improve_result = await cognee.improve(dataset=dataset)
         improve_note = str(improve_result)[:300] if improve_result is not None else "completed"
     except Exception as e:
         improve_note = (
-            "inline enrichment via remember(self_improvement=True); "
-            f"dedicated improve() route unavailable on this tenant ({str(e)[:90]})"
+            "postmortem processed by the full remember pipeline; dedicated "
+            f"improve() route not exposed on this tenant ({str(e)[:90]})"
         )
     return {"postmortem": "stored", "improve": improve_note, "dataset": dataset}
 
