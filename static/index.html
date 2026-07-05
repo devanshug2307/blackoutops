@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlackoutOps — the morning-after incident brain</title>
+<style>
+  :root{
+    --bg:#0a0d13; --panel:#10141c; --panel2:#0d1118; --line:#1d2430;
+    --text:#d7dee8; --dim:#8a94a6; --faint:#5b6474;
+    --amber:#fbbf24; --red:#f87171; --green:#34d399; --blue:#60a5fa; --violet:#a78bfa;
+    --chip:#161c27; --accent:#f5a623;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1200px 500px at 70% -10%, rgba(245,166,35,.05), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font:14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display:flex; flex-direction:column;
+  }
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
+
+  header{
+    display:flex; align-items:center; gap:14px;
+    padding:14px 20px; border-bottom:1px solid var(--line);
+    background:rgba(13,17,24,.85); backdrop-filter:blur(6px);
+  }
+  .wordmark{font-weight:800; font-size:18px; letter-spacing:.12em}
+  .wordmark b{color:var(--accent)}
+  .tagline{color:var(--dim); font-size:12.5px; border-left:1px solid var(--line); padding-left:14px}
+  .spacer{flex:1}
+  .pill{
+    display:inline-flex; align-items:center; gap:7px;
+    background:var(--chip); border:1px solid var(--line); border-radius:999px;
+    padding:5px 12px; font-size:12px; color:var(--dim);
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+  .dot.ok{background:var(--green); box-shadow:0 0 8px rgba(52,211,153,.7)}
+  .dot.bad{background:var(--red)}
+
+  main{
+    flex:1; display:grid; grid-template-columns:330px 1fr 350px;
+    gap:12px; padding:12px; min-height:0;
+  }
+  section{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  }
+  .sec-head{
+    padding:11px 14px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:8px;
+    font-size:11.5px; font-weight:700; letter-spacing:.14em; color:var(--dim);
+  }
+  .sec-head .sub{font-weight:400; letter-spacing:0; text-transform:none; color:var(--faint); font-size:11.5px}
+  .scroll{flex:1; overflow-y:auto; padding:12px; min-height:0}
+  .scroll::-webkit-scrollbar{width:8px}
+  .scroll::-webkit-scrollbar-thumb{background:#222b3a; border-radius:4px}
+
+  /* ---------- left: the night ---------- */
+  .artifact{
+    background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--faint);
+    border-radius:8px; padding:9px 11px; margin-bottom:9px;
+    font-size:11.5px; color:var(--dim); white-space:pre-wrap; word-break:break-word;
+  }
+  .artifact .tag{font-size:10px; font-weight:700; letter-spacing:.1em; display:inline-block; margin-bottom:5px}
+  .artifact.alert{border-left-color:var(--red)}   .artifact.alert .tag{color:var(--red)}
+  .artifact.page{border-left-color:var(--amber)}  .artifact.page .tag{color:var(--amber)}
+  .artifact.slack{border-left-color:var(--blue)}  .artifact.slack .tag{color:var(--blue)}
+  .artifact.shell{border-left-color:var(--green)} .artifact.shell .tag{color:var(--green)}
+  .artifact.deploy{border-left-color:var(--violet)} .artifact.deploy .tag{color:var(--violet)}
+  .artifact.pm{border-left-color:var(--accent)} .artifact.pm .tag{color:var(--accent)}
+  .empty{
+    color:var(--faint); text-align:center; padding:42px 18px; font-size:13px;
+  }
+  .empty h3{color:var(--dim); font-size:14px; margin-bottom:8px}
+
+  /* ---------- center: debrief ---------- */
+  .chat{display:flex; flex-direction:column; gap:12px}
+  .msg{max-width:86%; border-radius:12px; padding:10px 13px; font-size:13.5px}
+  .msg.user{align-self:flex-end; background:#1a2233; border:1px solid #263149}
+  .msg.brain{align-self:flex-start; background:var(--panel2); border:1px solid var(--line)}
+  .msg.brain .body{white-space:pre-wrap}
+  .msg .meta{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
+  .badge{
+    font-size:10px; padding:2px 8px; border-radius:999px;
+    background:var(--chip); border:1px solid var(--line); color:var(--dim);
+  }
+  .badge.kind{color:var(--violet); border-color:#2c2a4a}
+  .badge.ds{color:var(--blue)}
+  .badge.sess{color:var(--green)}
+  .typing{color:var(--faint); font-size:12.5px; padding:4px 2px}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; padding:10px 12px 4px}
+  .chip{
+    font-size:12px; color:var(--dim); background:var(--chip);
+    border:1px solid var(--line); border-radius:999px; padding:5px 11px; cursor:pointer;
+    transition:border-color .15s, color .15s;
+  }
+  .chip:hover{border-color:var(--accent); color:var(--text)}
+  .inputrow{display:flex; gap:8px; padding:12px; border-top:1px solid var(--line)}
+  .inputrow input{
+    flex:1; background:var(--panel2); border:1px solid var(--line); border-radius:9px;
+    color:var(--text); padding:10px 13px; font-size:13.5px; outline:none;
+  }
+  .inputrow input:focus{border-color:#31405c}
+  button.primary{
+    background:var(--accent); color:#161006; font-weight:700; border:none;
+    border-radius:9px; padding:10px 16px; cursor:pointer; font-size:13.5px;
+  }
+  button.primary:hover{filter:brightness(1.08)}
+  button.primary:disabled{opacity:.45; cursor:not-allowed}
+  .toggle{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); cursor:pointer; user-select:none}
+  .toggle input{accent-color:var(--accent)}
+
+  /* ---------- right: lifecycle ---------- */
+  .card{
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    padding:12px; margin-bottom:11px;
+  }
+  .card h4{
+    font-size:11px; letter-spacing:.16em; color:var(--text); margin-bottom:2px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .card h4 .n{color:var(--faint); font-weight:600}
+  .apichip{
+    display:block; font-size:10.5px; color:var(--violet);
+    background:#141224; border:1px solid #2c2a4a; border-radius:6px;
+    padding:4px 8px; margin:8px 0; overflow-x:auto; white-space:nowrap;
+  }
+  .card p{font-size:12px; color:var(--dim); margin-bottom:9px}
+  .row{display:flex; gap:7px; flex-wrap:wrap}
+  button.ghost{
+    background:var(--chip); color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:7px 11px; font-size:12px; cursor:pointer;
+    transition:border-color .15s;
+  }
+  button.ghost:hover{border-color:var(--accent)}
+  button.ghost:disabled{opacity:.4; cursor:not-allowed}
+  button.danger{border-color:#4a2430; color:var(--red)}
+  button.danger:hover{border-color:var(--red)}
+  .bar{height:6px; background:var(--chip); border-radius:4px; overflow:hidden; margin-top:9px; display:none}
+  .bar i{display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--accent), var(--amber)); transition:width .4s}
+  .note{font-size:11px; color:var(--faint); margin-top:7px}
+  .note.ok{color:var(--green)} .note.err{color:var(--red)}
+  select{
+    background:var(--chip); color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:7px 9px; font-size:12px;
+  }
+  .footnote{font-size:11px; color:var(--faint); text-align:center; padding:4px 14px 12px}
+
+  /* ---------- modal / toast ---------- */
+  .modal{
+    position:fixed; inset:0; background:rgba(4,6,10,.8); display:none;
+    align-items:center; justify-content:center; z-index:50; padding:26px;
+  }
+  .modal.open{display:flex}
+  .modal .box{
+    width:100%; height:100%; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .modal iframe{flex:1; border:0; background:#fff}
+  .toasts{position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:60}
+  .toast{
+    background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:8px; padding:10px 14px; font-size:12.5px; color:var(--dim);
+    max-width:360px; animation:slidein .25s ease;
+  }
+  .toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)}
+  @keyframes slidein{from{transform:translateX(20px); opacity:0} to{transform:none; opacity:1}}
+
+  @media (max-width:1100px){
+    main{grid-template-columns:1fr; overflow-y:auto}
+    section{min-height:320px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">BLACKOUT<b>OPS</b></div>
+  <div class="tagline">You got paged at 3AM. You fixed it half-asleep.<br>BlackoutOps remembers what you can't.</div>
+  <div class="spacer"></div>
+  <div class="pill mono" id="pill-session">session: morning-after-debrief</div>
+  <div class="pill" id="pill-cloud"><span class="dot" id="cloud-dot"></span><span id="cloud-text">connecting to Cognee Cloud…</span></div>
+</header>
+
+<main>
+  <!-- LEFT: the night -->
+  <section>
+    <div class="sec-head">THE NIGHT <span class="sub">· raw artifacts ingested into graph memory</span></div>
+    <div class="scroll" id="feed">
+      <div class="empty" id="feed-empty">
+        <h3>The night is a blur.</h3>
+        Alerts fired. Commands were run. Someone fixed something at 3:41AM.<br><br>
+        Seed the artifacts to give the brain its memories →
+      </div>
+    </div>
+  </section>
+
+  <!-- CENTER: debrief -->
+  <section>
+    <div class="sec-head">
+      MORNING-AFTER DEBRIEF
+      <span class="spacer"></span>
+      <label class="toggle" title="When on, every answer is logged to Cognee session memory, and recall checks the session first.">
+        <input type="checkbox" id="use-session" checked> session memory
+      </label>
+    </div>
+    <div class="scroll chat" id="chat">
+      <div class="msg brain">
+        <div class="body">Morning. Rough night — you were paged at 03:15 and closed the incident at 03:56. I hold the full record in Cognee Cloud: alerts, Slack, your shell history, deploy logs.
+
+Seed the night, then ask me anything. I never drink and I never forget.</div>
+        <div class="meta"><span class="badge">BlackoutOps</span></div>
+      </div>
+    </div>
+    <div class="chips" id="chips">
+      <span class="chip">What happened last night?</span>
+      <span class="chip">What was the root cause?</span>
+      <span class="chip">Have we seen this failure before?</span>
+      <span class="chip">What exactly did I run at 3AM?</span>
+      <span class="chip">How do we make sure this never happens again?</span>
+    </div>
+    <div class="inputrow">
+      <input id="q" placeholder="Ask the incident brain… (recall runs on Cognee Cloud)" autocomplete="off">
+      <button class="primary" id="send">Recall</button>
+    </div>
+  </section>
+
+  <!-- RIGHT: lifecycle -->
+  <section>
+    <div class="sec-head">MEMORY LIFECYCLE <span class="sub">· live Cognee Cloud calls</span></div>
+    <div class="scroll">
+
+      <div class="card">
+        <h4><span class="n">1 ·</span> REMEMBER</h4>
+        <span class="apichip mono">cognee.remember(artifact, dataset_name=…)</span>
+        <p>Ingest the night's raw artifacts. Cognee builds a knowledge graph: services, people, commands, causes.</p>
+        <div class="row">
+          <button class="ghost" id="seed-night">Seed last night</button>
+          <button class="ghost" id="seed-hist">Seed June 14 history</button>
+          <button class="ghost" id="seed-all">Seed both</button>
+        </div>
+        <div class="bar" id="seed-bar"><i></i></div>
+        <div class="note" id="seed-note"></div>
+      </div>
+
+      <div class="card">
+        <h4><span class="n">2 ·</span> RECALL</h4>
+        <span class="apichip mono">cognee.recall(q, datasets=[…], session_id=…, auto_route=True)</span>
+        <p>Every question in the debrief is an auto-routed recall over graph + session memory. Cross-incident questions traverse BOTH datasets.</p>
+        <div class="note" id="recall-note">no recalls yet</div>
+      </div>
+
+      <div class="card">
+        <h4><span class="n">3 ·</span> IMPROVE</h4>
+        <span class="apichip mono">cognee.improve(dataset=…) <span style="color:var(--faint)">// + postmortem remember</span></span>
+        <p>File the confirmed postmortem back into memory and run an enrichment pass — the brain learns the pattern, so the NEXT 3AM page gets answered in seconds.</p>
+        <div class="row"><button class="ghost" id="postmortem">File postmortem &amp; learn</button></div>
+        <div class="note" id="pm-note"></div>
+      </div>
+
+      <div class="card">
+        <h4><span class="n">4 ·</span> FORGET</h4>
+        <span class="apichip mono">cognee.forget(dataset=…)</span>
+        <p>Retention policy: surgically delete an incident. Then ask about it again — and watch the brain honestly not know.</p>
+        <div class="row">
+          <select id="forget-ds">
+            <option value="incident_2026_06_14">incident_2026_06_14 (history)</option>
+            <option value="incident_2026_07_05">incident_2026_07_05 (last night)</option>
+          </select>
+          <button class="ghost danger" id="forget">Purge</button>
+        </div>
+        <div class="note" id="forget-note"></div>
+      </div>
+
+      <div class="card">
+        <h4>KNOWLEDGE GRAPH</h4>
+        <span class="apichip mono">GET /api/v1/visualize?dataset_id=… (tenant)</span>
+        <p>See what the brain actually built out of the night.</p>
+        <div class="row">
+          <select id="graph-ds">
+            <option value="incident_2026_07_05">incident_2026_07_05</option>
+            <option value="incident_2026_06_14">incident_2026_06_14</option>
+          </select>
+          <button class="ghost" id="graph">Open graph</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="footnote">every action here is a live Cognee Cloud call — this app keeps no database of its own. refresh me: <i>I</i> forget, Cognee doesn't.</div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <div class="sec-head">KNOWLEDGE GRAPH <span class="sub" id="graph-title"></span><span class="spacer"></span>
+      <button class="ghost" onclick="document.getElementById('modal').classList.remove('open')">Close</button>
+    </div>
+    <iframe id="graph-frame" title="knowledge graph"></iframe>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = async (path, opts={}) => {
+  const r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+  if(!r.ok){ let d=''; try{ d=(await r.json()).detail }catch{}; throw new Error(d || r.status); }
+  return r.json();
+};
+const toast = (text, cls='') => {
+  const t = document.createElement('div');
+  t.className = 'toast ' + cls; t.textContent = text;
+  $('toasts').appendChild(t);
+  setTimeout(()=>t.remove(), 5200);
+};
+
+/* ---------- status polling ---------- */
+let seededShown = false;
+async function poll(){
+  try{
+    const s = await api('/api/status');
+    $('cloud-dot').className = 'dot ' + (s.connected ? 'ok':'bad');
+    $('cloud-text').textContent = s.connected ? `Cognee Cloud · ${s.tenant}` : 'cloud disconnected';
+    const p = s.seed;
+    if(p.state === 'running'){
+      $('seed-bar').style.display='block';
+      $('seed-bar').firstElementChild.style.width = (p.total? (100*p.done/p.total):0) + '%';
+      $('seed-note').textContent = `remembering artifact ${p.done}/${p.total} — building graph on cloud…`;
+      $('seed-note').className = 'note';
+      lockSeed(true);
+    } else if(p.state === 'done'){
+      $('seed-bar').firstElementChild.style.width='100%';
+      $('seed-note').textContent = `✓ ${p.total} artifacts remembered into graph memory`;
+      $('seed-note').className = 'note ok';
+      lockSeed(false);
+      if(!seededShown){ seededShown = true; loadFeed(); }
+    } else if(p.state === 'error'){
+      $('seed-note').textContent = '✗ ' + p.error;
+      $('seed-note').className = 'note err';
+      lockSeed(false);
+    }
+  }catch(e){
+    $('cloud-dot').className='dot bad'; $('cloud-text').textContent='backend unreachable';
+  }
+}
+setInterval(poll, 2500); poll();
+
+/* ---------- feed ---------- */
+function artifactClass(text){
+  if(text.startsWith('[ALERT]')) return ['alert','ALERT'];
+  if(text.startsWith('[PAGE]')) return ['page','PAGE'];
+  if(text.startsWith('[SLACK')) return ['slack','SLACK #INCIDENTS'];
+  if(text.startsWith('[SHELL')) return ['shell','SHELL HISTORY'];
+  if(text.startsWith('[DEPLOY')) return ['deploy','DEPLOY LOG'];
+  if(text.startsWith('[POSTMORTEM')) return ['pm','POSTMORTEM'];
+  return ['','ARTIFACT'];
+}
+async function loadFeed(){
+  const d = await api('/api/artifacts');
+  const feed = $('feed'); feed.innerHTML='';
+  const put = (items, label) => {
+    const h = document.createElement('div');
+    h.className='note'; h.style.margin='2px 2px 8px';
+    h.textContent = label;
+    feed.appendChild(h);
+    items.forEach(text=>{
+      const [cls, tag] = artifactClass(text);
+      const el = document.createElement('div');
+      el.className = 'artifact ' + cls;
+      el.innerHTML = `<span class="tag mono">${tag}</span>\n`;
+      el.append(text.replace(/^\[[^\]]+\]\s*/,''));
+      feed.appendChild(el);
+    });
+  };
+  put(d.last_night.items, `▸ ${d.last_night.dataset} — the hangover night`);
+  put(d.historical.items, `▸ ${d.historical.dataset} — three weeks earlier`);
+}
+
+/* ---------- seeding ---------- */
+function lockSeed(on){ ['seed-night','seed-hist','seed-all'].forEach(id=>$(id).disabled=on); }
+async function seed(which){
+  try{
+    await api('/api/seed', {method:'POST', body:JSON.stringify({which})});
+    toast('remember() pipeline started on Cognee Cloud');
+    seededShown = false;
+  }catch(e){ toast('seed: '+e.message, 'err'); }
+}
+$('seed-night').onclick = ()=>seed('last_night');
+$('seed-hist').onclick  = ()=>seed('historical');
+$('seed-all').onclick   = ()=>seed('all');
+
+/* ---------- chat ---------- */
+const THINKING = [
+  'auto-routing recall…','traversing knowledge graph…','checking session memory…',
+  'connecting alerts → deploys → commands…','asking the graph who broke redis…'
+];
+function addMsg(cls, body){
+  const el = document.createElement('div');
+  el.className = 'msg ' + cls;
+  const b = document.createElement('div'); b.className='body'; b.textContent = body;
+  el.appendChild(b);
+  $('chat').appendChild(el);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return el;
+}
+async function ask(q){
+  if(!q.trim()) return;
+  addMsg('user', q);
+  $('q').value=''; $('send').disabled = true;
+  const t = document.createElement('div'); t.className='typing';
+  t.textContent = THINKING[0]; $('chat').appendChild(t);
+  let i=0; const spin = setInterval(()=>{ t.textContent = THINKING[++i % THINKING.length]; }, 1600);
+  try{
+    const useSession = $('use-session').checked;
+    const res = await api('/api/ask', {method:'POST', body:JSON.stringify({question:q, use_session:useSession})});
+    clearInterval(spin); t.remove();
+    const main = res.answers[0];
+    const el = addMsg('brain', main ? main.text : '(no answer — did you seed the night?)');
+    const meta = document.createElement('div'); meta.className='meta';
+    (res.answers.slice(0,2)).forEach(a=>{
+      meta.innerHTML += `<span class="badge kind">${a.kind}</span>`;
+      if(a.dataset) meta.innerHTML += `<span class="badge ds">${a.dataset}</span>`;
+    });
+    if(useSession) meta.innerHTML += `<span class="badge sess">session logged</span>`;
+    el.appendChild(meta);
+    $('recall-note').textContent = `last recall routed over: ${res.routed_over.join(', ')}${useSession?' + session':''}`;
+  }catch(e){
+    clearInterval(spin); t.remove();
+    addMsg('brain', '⚠ recall failed: ' + e.message);
+  }
+  $('send').disabled = false;
+}
+$('send').onclick = ()=>ask($('q').value);
+$('q').addEventListener('keydown', e=>{ if(e.key==='Enter') ask($('q').value); });
+$('chips').addEventListener('click', e=>{ if(e.target.classList.contains('chip')) ask(e.target.textContent); });
+
+/* ---------- improve ---------- */
+$('postmortem').onclick = async ()=>{
+  $('postmortem').disabled = true;
+  $('pm-note').textContent = 'remembering postmortem + running improve() on cloud…';
+  $('pm-note').className='note';
+  try{
+    await api('/api/postmortem', {method:'POST'});
+    $('pm-note').textContent = '✓ pattern learned. Ask: "have we seen this before?" — recall now ranks the confirmed root-cause pattern first.';
+    $('pm-note').className = 'note ok';
+    toast('improve() complete — memory adapted', 'ok');
+    loadFeed(); // postmortem now part of the record
+  }catch(e){
+    $('pm-note').textContent = '✗ ' + e.message; $('pm-note').className='note err';
+  }
+  $('postmortem').disabled = false;
+};
+
+/* ---------- forget ---------- */
+$('forget').onclick = async ()=>{
+  const ds = $('forget-ds').value;
+  if(!confirm(`forget(dataset="${ds}")\n\nThis surgically deletes the incident from Cognee Cloud. Continue?`)) return;
+  $('forget').disabled = true;
+  $('forget-note').textContent = 'purging…'; $('forget-note').className='note';
+  try{
+    const r = await api('/api/forget', {method:'POST', body:JSON.stringify({dataset:ds})});
+    $('forget-note').textContent = `✓ ${ds} deleted (status: ${r.status || 'success'}). Now ask about it — the brain honestly won't know.`;
+    $('forget-note').className = 'note ok';
+    toast(`forget() receipt: ${ds} → ${r.status || 'success'}`, 'ok');
+  }catch(e){
+    $('forget-note').textContent = '✗ ' + e.message; $('forget-note').className='note err';
+  }
+  $('forget').disabled = false;
+};
+
+/* ---------- graph ---------- */
+$('graph').onclick = ()=>{
+  const ds = $('graph-ds').value;
+  $('graph-title').textContent = '· ' + ds;
+  $('graph-frame').src = '/api/graph?dataset=' + encodeURIComponent(ds);
+  $('modal').classList.add('open');
+};
+</script>
+</body>
+</html>
