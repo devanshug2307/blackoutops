@@ -53,7 +53,7 @@ Every on-call engineer knows the hangover: alerts at 02:47, pages at 03:15, a bl
 ## Quickstart
 
 ```bash
-git clone https://github.com/devanshug2307/blackoutops git clone <this-repo> && cd blackoutopsgit clone <this-repo> && cd blackoutops cd blackoutops
+git clone https://github.com/devanshug2307/blackoutops && cd blackoutops
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 cat > .env << 'EOF'
