@@ -1,3 +1,4 @@
+Documentation file README.md of repository 'blackoutops':
 # 🌅 BlackoutOps — the morning-after incident brain
 
 > **You got paged at 3AM. You fixed it half-asleep. BlackoutOps remembers what you can't.**
@@ -72,28 +73,4 @@ Get a tenant + key at [platform.cognee.ai](https://platform.cognee.ai) (hackatho
 ## Demo script (3 minutes)
 
 1. **Seed the night** → watch `remember()` build two incident datasets on the cloud.
-2. Ask **"What happened last night?"** → full timeline reconstruction from fragments.
-3. Ask **"What exactly did I run at 3AM?"** → your shell history, in order, with intent.
-4. Ask **"Have we seen this failure before?"** → cross-incident graph answer linking June 14's eviction storm — same pattern, different service.
-5. **File postmortem & learn** → `improve()` — ask again and watch the confirmed pattern lead the answer.
-6. **Open the knowledge graph** → the night, as a graph.
-7. **Purge June 14** → `forget()` receipt → ask about it again → the brain honestly doesn't know.
-
-## Bugs we found upstream (and reported)
-
-Building on a live cloud during a hackathon is the best fuzzer there is:
-
-1. **`remember()` into a fully-`forget()`-ed dataset name fails forever** — after `forget(dataset=X)` (full deletion), any later `remember(..., dataset_name=X)` returns `409 RetryError[ProgrammingError]`. Filed as [topoteretes/cognee#3895](https://github.com/topoteretes/cognee/issues/3895) with a minimal repro ([`scripts/repro_forget_409.py`](scripts/repro_forget_409.py)). Our workaround: `forget(memory_only=True)`, which wipes graph/vector memory (recall honestly knows nothing) while keeping the dataset name reusable.
-2. **Fresh tenant subdomains can be invisible behind negative DNS caches** — resolvers that were asked about the tenant host *before* provisioning (1.1.1.1 in our case) serve cached NXDOMAIN afterwards. Worked around in [`dns_fallback.py`](dns_fallback.py) via DNS-over-HTTPS + `socket.getaddrinfo` pinning (run uvicorn with `--loop asyncio`; uvloop resolves DNS in C and bypasses the patch).
-
-## AI assistance disclosure
-
-This project was built with **Claude Code (Claude Fable 5)** as a pair programmer for scaffolding, debugging, and documentation, under human direction. Disclosed per hackathon rules.
-
-## Team
-
-Solo build by **Devanshu** ([litelae@gmail.com](mailto:litelae@gmail.com)).
-
-## License
-
-[MIT](LICENSE)
+2. Ask **"What happen
