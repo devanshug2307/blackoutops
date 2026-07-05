@@ -136,6 +136,17 @@
     animation:blink 1.1s ease-in-out infinite;
   }
   .msg.brain code{background:#151a26; border:1px solid #232d40; border-radius:5px; padding:1px 5px; font-family:ui-monospace, Menlo, monospace; font-size:12px}
+  .msg.brain .prov{color:var(--faint); font-size:10.5px; padding:0 3px}
+  .msg.brain .md-h{display:block; margin:10px 0 2px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#aeb8ca}
+  .msg.brain hr.md{border:0; border-top:1px solid var(--line2); margin:10px 0}
+  .msg.brain .tablewrap{overflow-x:auto; margin:8px 0; border:1px solid var(--line2); border-radius:9px; background:rgba(255,255,255,.012)}
+  .msg.brain table.md{border-collapse:collapse; font-size:12px; min-width:100%}
+  .msg.brain table.md th{
+    text-align:left; padding:7px 10px; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--dim); background:rgba(255,255,255,.025); border-bottom:1px solid var(--line2); white-space:nowrap;
+  }
+  .msg.brain table.md td{padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.5; min-width:120px}
+  .msg.brain table.md tr:last-child td{border-bottom:0}
   .chips{display:flex; flex-wrap:wrap; gap:7px; padding:11px 13px 4px}
   .chip{
     font-size:11.5px; color:var(--dim); background:linear-gradient(180deg,#161d29,#131824);
@@ -496,13 +507,52 @@ const THINKING = [
   'auto-routing recall…','traversing knowledge graph…','checking session memory…',
   'connecting alerts → deploys → commands…','asking the graph who broke redis…'
 ];
+function mdInline(escaped){
+  return escaped
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>')
+    .replace(/【([^】]*)】/g, '<span class="prov">$1</span>');
+}
 function mdLite(text){
-  // escape first, then whitelist a few inline markdown forms
+  // escape everything first, then apply a small whitelist of markdown forms
   const esc = document.createElement('div');
   esc.textContent = text;
-  return esc.innerHTML
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  const lines = esc.innerHTML.split('\n');
+  const out = [];
+  let table = [];
+  const isRow = l => /^\s*\|.*\|\s*$/.test(l);
+  const isSep = l => /^\s*\|[\s:|-]+\|\s*$/.test(l);
+  const flushTable = () => {
+    if(!table.length) return;
+    if(table.length >= 2 && isSep(table[1])){
+      const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => mdInline(c.trim()));
+      let html = '<div class="tablewrap"><table class="md"><thead><tr>';
+      html += cells(table[0]).map(c => `<th>${c}</th>`).join('');
+      html += '</tr></thead><tbody>';
+      for(const row of table.slice(2)){
+        html += '<tr>' + cells(row).map(c => `<td>${c}</td>`).join('') + '</tr>';
+      }
+      out.push(html + '</tbody></table></div>');
+    } else {
+      table.forEach(l => out.push(mdInline(l)));
+    }
+    table = [];
+  };
+  for(const line of lines){
+    if(isRow(line)){ table.push(line); continue; }
+    flushTable();
+    if(/^\s*#{1,6}\s+/.test(line)){ out.push(`<b class="md-h">${mdInline(line.replace(/^\s*#{1,6}\s+/, ''))}</b>`); continue; }
+    if(/^\s*(---+|\*\*\*+)\s*$/.test(line)){ out.push('<hr class="md">'); continue; }
+    out.push(mdInline(line));
+  }
+  flushTable();
+  // block elements bring their own spacing; drop the blank pre-wrap lines around them
+  return out.join('\n')
+    .replace(/\n?(<div class="tablewrap">)/g, '$1').replace(/(<\/div>)\n?/g, '$1')
+    .replace(/\n?(<hr class="md">)\n?/g, '$1')
+    .replace(/\n{3,}/g, '\n\n');
 }
 function addMsg(cls, body){
   const el = document.createElement('div');
